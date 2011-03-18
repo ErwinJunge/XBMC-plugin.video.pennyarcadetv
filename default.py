@@ -1,0 +1,194 @@
+import os
+import urllib2
+import xbmcplugin,xbmcgui
+import urlparse
+import re
+from cgi import parse_qs
+from BeautifulSoup import BeautifulSoup, BeautifulStoneSoup
+
+__plugin__ = "Penny Arcade TV"
+__author__ = "jorsoban"
+__url__ = ""
+__svn_url__ = ""
+__version__ = "0.0.1"
+
+def log(msg):
+  print "[PLUGIN] '%s (%s)' " % (__plugin__, __version__) + str(msg)
+
+log("Initialized!")
+log(sys.argv)
+
+pluginPath = sys.argv[0]
+pluginHandle = int(sys.argv[1])
+pluginQuery = sys.argv[2]
+
+rootUrl = "http://www.penny-arcade.com"
+showThumbnail = xbmc.translatePath(os.path.join(os.getcwd().replace(';', ''),"icon.png"))
+#todo - sorting?
+#xbmcplugin.addSortMethod(handle=pluginHandle,sortMethod=xbmcplugin.SORT_METHOD_TITLE)
+
+def getHeaders(referrer=None):
+  headers = {}
+  headers['User-Agent'] = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.2.3) Gecko/20100401 Firefox/3.6.3'
+  if referrer:
+    headers['Referrer'] = referrer
+  return headers
+
+def getDataForUrl(url, data=None, referrer=None):
+  log("Get data for url: " + url)
+  req = urllib2.Request(url, data, getHeaders(referrer))
+  response = urllib2.urlopen(req)
+  data = response.read()
+  response.close()
+  return data
+  
+def getRedirectUrlForUrl(url, referrer=None):
+  log("Get redirect for url: " + url)
+  req = urllib2.Request(url, None, getHeaders(referrer))
+  return urllib2.urlopen(req).url 
+  
+def root():
+  xbmcplugin.setContent(pluginHandle, 'shows')
+  showsPage = BeautifulSoup(getDataForUrl(rootUrl + '/patv'), convertEntities=BeautifulSoup.HTML_ENTITIES)
+  
+  titleRegex = re.compile('Season (?P<s>[0-9]): Episode (?P<ep>[0-9]+) - (?P<title>.+)')
+  onlyNumberRegex = re.compile('Season (?P<s>[0-9]): Episode (?P<ep>[0-9]+)')
+  
+  #Parse the current ep and show links from the root page
+  infoDivs = showsPage.findAll('div',attrs={'class':'info'})
+  foundShows = []
+  foundEps = []
+  
+  for div in infoDivs:
+    links = div.findAll('a')
+    if links[0]['title'] == 'Watch Now':
+      ep = {}
+      #Show title
+      ep['title'] = links[1]['title']
+
+      #Episode title
+      match = titleRegex.match(links[2]['title'])
+      if(match == None):
+        match = onlyNumberRegex.match(links[2]['title'])
+      parts = match.groupdict()
+      ep['title'] += ' - %sx%s' % (parts['s'], parts['ep'])
+      if 'title' in parts:
+        ep['title'] += ' - ' + parts['title']
+
+      #Image and url
+      ep['imgurl'] = rootUrl + div.parent.img['src']
+      ep['url'] = rootUrl + links[0]['href']
+
+      foundEps.append(ep)
+    else:
+      show = {}
+      #todo - add show blurbs as info labels?
+      show['title'] = links[0]['title']
+      show['imgurl'] = rootUrl + div.parent.a.img['src']
+      show['url'] = rootUrl + links[0]['href']
+      show['info'] = div.p.contents
+      foundShows.append(show)
+      
+  #Add the found show/ep links to the root list
+  for show in foundShows:
+    xbmcplugin.addDirectoryItem(
+      handle=pluginHandle,
+      isFolder=True,
+      url=pluginPath + '?action=showepisodes&url=' + show['url'],
+      listitem=xbmcgui.ListItem(show['title'], thumbnailImage=show['imgurl']))
+
+  for ep in foundEps: 
+    li = xbmcgui.ListItem(ep['title'], thumbnailImage=ep['imgurl'])
+    li.setProperty('IsPlayable', 'true')
+    xbmcplugin.addDirectoryItem(
+      handle=pluginHandle,
+      url=pluginPath + '?action=playvideo&url=' + ep['url'],
+      listitem=li)
+
+  xbmcplugin.endOfDirectory(pluginHandle)
+
+def addEpisodeItem(name, url, img):
+  li = xbmcgui.ListItem(name, thumbnailImage=img)
+  li.setProperty('IsPlayable','true')
+  xbmcplugin.addDirectoryItem(
+    handle=pluginHandle,
+    url=pluginPath + '?action=playvideo&url=' + url,
+    listitem=li)
+
+def showEpisodes(url):
+  xbmcplugin.setContent(pluginHandle, 'episodes')
+  urlRegex = re.compile('/.*/.*/(.*?)/')
+  episodesPage = BeautifulSoup(getDataForUrl(url), convertEntities=BeautifulSoup.HTML_ENTITIES)
+
+  epLists = episodesPage.findAll(attrs={'class' : 'episodes'})
+  if not epLists:
+    epLists = episodesPage.findAll(attrs={'id' : 'episodes'})
+  
+  #passing counter into format ep name for non number episodes
+  seasonCounter = len(epLists)
+  for epList in epLists:
+    for ep in epList.findAll('li'):
+      aTags = ep.findAll('a')
+      img = rootUrl + ep.img['src']
+      url = rootUrl + aTags[0]['href']
+      name = formatEpName(aTags[0]['href'], aTags[1].contents[2], urlRegex, seasonCounter)
+      addEpisodeItem(name, url, img)
+    seasonCounter -= 1
+
+  xbmcplugin.endOfDirectory(pluginHandle)
+  
+def formatEpName(url, epName, urlRegex, seasonCt):
+  #for urls don't have trailing / so they will work with regex
+  if url[-1] != '/':
+    url += '/'
+  
+  #some eps in penny arcade series have non-number episodes
+  epPart = urlRegex.match(url).groups()[0]
+  try: 
+    test = int(epPart)
+    finalName = epPart[0] + 'x' + epPart[1:] + ' - '
+  except:
+    finalName = '%sx00 - ' % (seasonCt)
+  
+  idx = epName.find(':')
+  if idx != -1:
+    finalName += epName[idx+2:]
+  else:
+    finalName += epName
+    
+  return finalName
+    
+def playVideo(url):
+  #Start at video page http://www.penny-arcade.com/patv/[series]/[episode]
+  #Get the embed tag on the video page as the first step to get the final url
+  videoPage = BeautifulSoup(getDataForUrl(url))
+  #Assuming a single embed tag works for now
+  embedUrl = videoPage('embed')[0]['src']
+  
+  #embedUrl redirects to another Url that has a QS param for a Url to the rss file for this specific video
+  #4 is to get the query portion of the final url, not sure why the named attribute doesn't work..
+  redirectUrl = urlparse.urlparse(getRedirectUrlForUrl(embedUrl))
+  redirectQS = parse_qs(redirectUrl[4])
+  rssFileUrl = redirectQS['file'][0]
+  rssFile = BeautifulStoneSoup(getDataForUrl(rssFileUrl))
+  
+  #assuming first is default, if not true for all will need to alter this.
+  finalVideoUrl = rssFile('media:content')[0]['url']
+  
+  #set the final url as the resolved url
+  resolvedItem = xbmcgui.ListItem(path=finalVideoUrl)
+  xbmcplugin.setResolvedUrl(pluginHandle, True, resolvedItem)
+  
+#default action
+action='root'
+params = parse_qs(pluginQuery[1:]) #slice to remove leading ?
+
+if len(params) > 0:
+  action = params['action'][0]
+  
+if action == 'root':
+  root()
+elif action == 'showepisodes':
+  showEpisodes(params['url'][0])
+elif action == 'playvideo':
+  playVideo(params['url'][0])
