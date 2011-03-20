@@ -1,3 +1,8 @@
+[B]Version 1.0.0 - 2011-03-20[/B]
+
+- Cleaned up for repo submission
+- Added option for listing latest in their own directory
+
 [B]Version 0.0.1 - 2011-03-07[/B]
 
 - Initial version.
