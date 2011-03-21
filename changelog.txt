@@ -2,6 +2,7 @@
 
 - Cleaned up for repo submission
 - Added option for listing latest in their own directory
+- Changed to show list of streams to choose from before playing
 
 [B]Version 0.0.1 - 2011-03-07[/B]
 
