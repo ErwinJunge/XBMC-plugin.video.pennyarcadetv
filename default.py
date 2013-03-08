@@ -186,35 +186,14 @@ def playVideo(url):
     videoPage = BeautifulSoup(getHTML(forURL=url))
     #Assuming a single embed tag works for now
     embedUrl = videoPage("iframe")[0]["src"]
-
-    #embedUrl redirects to another Url that has a QS param for a Url to the rss file for this specific video
-    #4 is to get the query portion of the final url, not sure why the named attribute doesn"t work..
-    redirectUrl = urlparse.urlparse(getRedirectURL(forURL=embedUrl))
-    redirectQS = parse_qs(redirectUrl[5])
-    rssFileUrl = redirectQS["file"][0]
-    rssFile = BeautifulStoneSoup(getHTML(forURL=rssFileUrl))
-
-    #assuming first is default, if not true for all will need to alter this.
-    mediaTags = rssFile("media:content")
     
-    #todo - should probably add a default choice, need to be sure what's all available first
-    choices = []
-    for mTag in mediaTags:
-        size = float(mTag["filesize"]) / (1024*1024)
-        choices.append("%s (%sx%s) (%.2f MB)" % (mTag["blip:role"],mTag["width"],mTag["height"], size))
-        
-    selected = xbmcgui.Dialog().select(__strings__(30052), choices)
-    
-    #todo - should figure out how to gracefully not play something if they back out of 
-    #selection
-    if selected == -1:
-        selected = 0
-        
-    finalVideoUrl = mediaTags[selected]["url"]
+    # Get youtube id
+    youtube_id = embedUrl.split('/')[4]
 
-    #set the final url as the resolved url
-    resolvedItem = xbmcgui.ListItem(path=finalVideoUrl)
-    xbmcplugin.setResolvedUrl(pluginHandle, True, resolvedItem)
+    # Pass youtube id to youtube plugin
+    youtube_url = 'plugin://plugin.video.youtube?action=play_video&videoid=%s' % (youtube_id)
+    resolvedItem = xbmcgui.ListItem(path=youtube_url)
+    xbmcplugin.setResolvedUrl(pluginHandle, True, resolvedItem)    
   
 #Set default action
 action="listshowsandlatest"
