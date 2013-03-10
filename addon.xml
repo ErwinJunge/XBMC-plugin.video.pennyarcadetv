@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.pennyarcadetv" 
-       name="Penny Arcade TV" 
+<addon id="plugin.video.pennyarcadetv"
+       name="Penny Arcade TV"
        version="2.0.4"
        provider-name="jorsoban, ErwinJunge">
   <requires>
